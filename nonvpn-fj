@@ -17,7 +17,7 @@ bye () {
         printf '%s\n' "$*"
     } >&2
 
-	exit 1
+    exit 1
 }
 
 # --
@@ -62,7 +62,7 @@ check_cmd () {
         [[ -x $1 ]] || bye 'not executable'
     else
         cmd_in_path "$1" ||
-	        bye 'not found in PATH'
+            bye 'not found in PATH'
     fi
 
     bye_pop
@@ -157,15 +157,15 @@ main () {
     while (( $# )); do
         [[ ! $1 == -- ]] || break
 
-	    fj_args+=("$1")
-	    shift
+        fj_args+=("$1")
+        shift
     done
 
     if [[ ${1-} == -- ]]; then
-	    shift
+        shift
     else
-	    set -- "${fj_args[@]}"
-	    fj_args=()
+        set -- "${fj_args[@]}"
+        fj_args=()
     fi
 
     # --
