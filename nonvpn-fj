@@ -3,74 +3,9 @@
 # MIT license (c) 2023 https://github.com/slowpeek
 # Homepage: https://github.com/slowpeek/nonvpn-fj
 
-: <<'README'
-
-The script is a wrapper around such firejail command:
-
-    firejail --net=.. defaultgw=.. --dns=.. [--iprange=..] cmd [args]
-
-Custom firejail's args should be separated with "--" from the command:
-
-    nonvpn-fj --noprofile -- curl ..
-
-The extra args are appended to the ones mention above.
-
---
-
-In a common scenario there are two interfaces: a "real" one, e.g. eth0, and a
-vpn one, e.g. tun0. By default tun0's metric in the routing table gives it
-higher priority hence the vpn route is selected. The script runs a command
-picking the first "real" interface in the routing table instead.
-
-One can change the default choices with /etc/nonvpn-fj.conf file. It should
-contain such blocks:
-
-    [ip]
-    key=val
-    key=val
-    ..
-
-[ip] matches the gateway the script picks as a "direct" one. Empty lines and
-lines starting with '#' are ignored.
-
-In case there is only one interface and its gateway (x.x.x.2) is a vpn
-forwarder, but there is another "direct" gateway (x.x.x.1) in the network, match
-for x.x.x.2 and set gw=x.x.x.1:
-
-    [x.x.x.2]
-    gw=x.x.x.1
-
-For the "direct" connection the script defaults to dns=1.1.1.1. It can be
-changed this way:
-
-    [x.x.x.x]
-    dns=8.8.8.8
-
-firejail needs some ip to assign to the virtual interface it creates. By default
-it picks a random unused (arp check) one from the whole network. This way it can
-seize some reserved ip like a static lease for a temporarily offline host. Limit
-the scope like this:
-
-    [x.x.x.x]
-    iprange=x.x.x.20,x.x.x.29
-
---
-
-firejail setup:
-
-- have "network yes" and "restricted-network no" in
-  /etc/firejail/firejail.config
-
-- if /etc/firejail/firejail.users exists, only users listed there are allowed to
-  use firejail
-
-README
-
 set -eu
 
 CONF=/etc/nonvpn-fj.conf
-
-# --
 
 bye_prefix=()
 bye_push () { bye_prefix+=("$@"); }
@@ -97,7 +32,7 @@ Wrapper around such command:
 
 'cmd' could be either a path or a name to look for in PATH.
 
-Homepage: https://github.com/slowpeek/nonvpn-fj
+More details at https://github.com/slowpeek/nonvpn-fj
 EOF
 
     exit 0
