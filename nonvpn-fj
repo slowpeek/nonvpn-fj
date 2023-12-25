@@ -6,7 +6,7 @@ The script is a wrapper around such firejail command:
 
     firejail --net=.. defaultgw=.. --dns=.. [--iprange=..] cmd [args]
 
-Custom fijejail's args should be separated with "--" from the command:
+Custom firejail's args should be separated with "--" from the command:
 
     nonvpn-fj --noprofile -- curl ..
 
