@@ -1,0 +1,260 @@
+#!/usr/bin/env bash
+
+: <<'README'
+
+The script is a wrapper around such firejail command:
+
+    firejail --net=.. defaultgw=.. --dns=.. [--iprange=..] cmd [args]
+
+Custom fijejail's args should be separated with "--" from the command:
+
+    nonvpn-fj --noprofile -- curl ..
+
+The extra args are appended to the ones mention above.
+
+--
+
+In a common scenario there are two interfaces: a "real" one, e.g. eth0, and a
+vpn one, e.g. tun0. By default tun0's metric in the routing table gives it
+higher priority hence the vpn route is selected. The script runs a command
+picking the first "real" interface in the routing table instead.
+
+One can change the default choices with /etc/nonvpn-fj.conf file. It should
+contain such blocks:
+
+    [ip]
+    key=val
+    key=val
+    ..
+
+[ip] matches the gateway the script picks as a "direct" one. Empty lines and
+lines starting with '#' are ignored.
+
+In case there is only one interface and its gateway (x.x.x.2) is a vpn
+forwarder, but there is another "direct" gateway (x.x.x.1) in the network, match
+for x.x.x.2 and set gw=x.x.x.1:
+
+    [x.x.x.2]
+    gw=x.x.x.1
+
+For the "direct" connection the script defaults to dns=1.1.1.1. It can be
+changed this way:
+
+    [x.x.x.x]
+    dns=8.8.8.8
+
+firejail needs some ip to assign to the virtual interface it creates. By default
+it picks a random unused (arp check) one from the whole network. This way it can
+seize some reserved ip like a static lease for a temporarily offline host. Limit
+the scope like this:
+
+    [x.x.x.x]
+    iprange=x.x.x.20,x.x.x.29
+
+--
+
+firejail setup:
+
+- have "network yes" and "restricted-network no" in
+  /etc/firejail/firejail.config
+
+- if /etc/firejail/firejail.users exists, only users listed there are allowed to
+  use firejail
+
+README
+
+set -eu
+
+CONF=/etc/nonvpn-fj.conf
+
+# --
+
+bye_prefix=()
+bye_push () { bye_prefix+=("$@"); }
+bye_pop () { unset -v 'bye_prefix[-1]'; }
+
+bye () {
+    {
+        [[ -v bye_prefix ]] && printf '%s: ' "${bye_prefix[@]}"
+        printf '%s\n' "$*"
+    } >&2
+
+	exit 1
+}
+
+# --
+
+usage() {
+    cat <<'EOF'
+Usage: nonvpn-fj [firejail args --] cmd [args]
+
+Wrapper around such command:
+
+    firejail --net=.. defaultgw=.. --dns=.. [--iprange=..] cmd [args]
+
+'cmd' could be either a path or a name to look for in PATH.
+
+Homepage: https://github.com/slowpeek/nonvpn-fj
+EOF
+
+    exit 0
+}
+
+cmd_in_path () {
+    type -P -- "$1" >/dev/null
+}
+
+check_reqs () {
+    local cmd
+
+    for cmd; do
+        if ! cmd_in_path "$cmd"; then
+            bye_push reqs "$cmd"
+            bye 'not found in PATH'
+        fi
+    done
+}
+
+check_cmd () {
+    bye_push "$1"
+
+    if [[ $1 == */* ]]; then
+        [[ -e $1 ]] || bye 'no such file'
+        [[ -f $1 ]] || bye 'not a regular file'
+        [[ -x $1 ]] || bye 'not executable'
+    else
+        cmd_in_path "$1" ||
+	        bye 'not found in PATH'
+    fi
+
+    bye_pop
+}
+
+# Set upper: dev, gw
+net_select () {
+    local found=n any=n
+
+    while read -r _ _ gw _ dev _; do
+        any=y
+
+        # Out of the default routes pick the first wired/wireless iface
+        if [[ $dev == @(en*|eth*|wl*) ]]; then
+            found=y
+            break
+        fi
+    done < <(ip route show default)
+
+    [[ $any == y ]] ||
+        bye 'no default routes defined'
+
+    [[ $found == y ]] ||
+        bye 'no wired/wireless iface found'
+}
+
+# Optionally set upper: gw, dns, iprange
+load_conf () {
+    [[ -f $1 ]] || return 0
+
+    bye_push "$1"
+    local mode=init line lineno=0 key val gw_org=$gw e
+
+    while read -r line; do
+        (( ++lineno ))
+
+        case $line in
+            ''|\#*)
+                continue ;;
+
+            \[*\])
+                [[ $line == "[${gw_org}]" ]] && mode=keep || mode=skip
+                continue ;;
+
+            *=*)
+                if [[ $mode == init ]]; then
+                    e='format error'
+                    break
+                else
+                    read -r key <<< "${line%%=*}"
+
+                    if [[ -z $key ]]; then
+                        e='empty option name'
+                        break
+                    fi
+
+                    if [[ $key != @(gw|dns|iprange) ]]; then
+                        e="unknown option '${key}'"
+                        break
+                    fi
+
+                    read -r val <<< "${line#*=}"
+
+                    if [[ -z $val ]]; then
+                        e='empty value'
+                        break
+                    fi
+
+                    [[ $mode == skip ]] || printf -v "$key" '%s' "$val"
+                fi ;;
+
+            *)
+                e='format error'
+                break ;;
+        esac
+    done < "$1"
+
+    if [[ -v e ]]; then
+        bye_push "line ${lineno}"
+        bye "$e"
+    fi
+
+    bye_pop
+}
+
+main () {
+    bye_push $'\e[31mnonvpn-fj\e[0m'
+
+    # Extract custom firejail args --
+
+    local fj_args=()
+    while (( $# )); do
+        [[ ! $1 == -- ]] || break
+
+	    fj_args+=("$1")
+	    shift
+    done
+
+    if [[ ${1-} == -- ]]; then
+	    shift
+    else
+	    set -- "${fj_args[@]}"
+	    fj_args=()
+    fi
+
+    # --
+
+    local cmd=${1-}
+    [[ -n "$cmd" ]] || usage
+
+    check_reqs ip firejail
+    check_cmd "$cmd"
+
+    # --
+
+    local gw dev dns=1.1.1.1 iprange
+    net_select
+
+    load_conf "$CONF"
+
+    local args=(
+        --net="$dev"
+        --defaultgw="$gw"
+        --dns="$dns"
+    )
+
+    # If present, --iprange must come after --net
+    [[ -v iprange ]] && args+=(--iprange="$iprange")
+
+    exec firejail "${args[@]}" "${fj_args[@]}" "$@"
+}
+
+[[ ! ${BASH_SOURCE[0]} == "$0" ]] || main "$@"
