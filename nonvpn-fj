@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+# MIT license (c) 2023 https://github.com/slowpeek
+# Homepage: https://github.com/slowpeek/nonvpn-fj
+
 : <<'README'
 
 The script is a wrapper around such firejail command:
