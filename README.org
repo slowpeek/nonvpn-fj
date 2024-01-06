@@ -52,11 +52,11 @@ changed this way:
 Firejail needs some ip to assign to the virtual interface it creates. By default
 it picks a random unused (arp check) one from the whole network. This way it can
 seize some reserved ip like a static lease for a temporarily offline host. Limit
-the scope like this:
+the scope like this (the values are =L= to =R-1=):
 
 #+begin_example
     [x.x.x.x]
-    iprange=x.x.x.20,x.x.x.29
+    iprange=x.x.x.20,x.x.x.30
 #+end_example
 
 * Firejail setup
